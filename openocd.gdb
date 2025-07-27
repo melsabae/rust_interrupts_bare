@@ -34,11 +34,6 @@ monitor arm semihosting enable
 # # enable ITM port 0
 # monitor itm port 0 on
 
-load
-
-# start the process but immediately halt the processor
-stepi
-
 define reset
     set *(0xe000_ed0c as *mut u32) = 0x05FA_0004
     r
@@ -51,4 +46,9 @@ define induce_exti0_interrupt
     # clear interrupt request, should have been latched by pending register
     set *(0x4001_0410 as *mut u32) = 0
 end
+
+load
+
+# start the process but immediately halt the processor
+stepi
 
