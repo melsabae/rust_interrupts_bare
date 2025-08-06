@@ -23,12 +23,18 @@ fn main() {
         .unwrap()
         .write_all(include_bytes!("memory.x"))
         .unwrap();
+    File::create(out.join("device.x"))
+        .unwrap()
+        .write_all(include_bytes!("device.x"))
+        .unwrap();
+    println!("cargo:rustc-link-search={}", out.display());
     println!("cargo:rustc-link-search={}", out.display());
 
     // By default, Cargo will re-run a build script whenever
     // any file in the project changes. By specifying `memory.x`
     // here, we ensure the build script is only re-run when
     // `memory.x` is changed.
+    println!("cargo:rerun-if-changed=device.x");
     println!("cargo:rerun-if-changed=memory.x");
 
     // Specify linker arguments.
@@ -41,3 +47,4 @@ fn main() {
     // Set the linker script to the one provided by cortex-m-rt.
     println!("cargo:rustc-link-arg=-Tlink.x");
 }
+
