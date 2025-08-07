@@ -4,8 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-cortex-m-rt = { version = "0.7.5", features = ["device", "set-sp", "set-vtor"] }
-#cortex-m-rt = { version = "0.7.5", features = ["device", "set-sp"] }
+cortex-m = { version = "0.7.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7.5"
+cortex-m-semihosting = "0.5.0"
+critical-section = "1.2.0"
+panic-semihosting = "0.6.0"
+stm32f3xx-hal = { version = "0.10.0", features = ["stm32f303xc"] }
 
 [profile.release]
 panic = "abort"

@@ -1,0 +1,18 @@
+[package]
+name = "rust_interrupts_bare"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cortex-m-rt = { version = "0.7.5", features = ["device", "set-sp", "set-vtor"] }
+#cortex-m-rt = { version = "0.7.5", features = ["device", "set-sp"] }
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+debug = true
+lto = true
+
+[profile.dev]
+panic = "abort"
+
