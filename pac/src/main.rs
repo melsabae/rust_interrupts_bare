@@ -16,37 +16,43 @@ use stm32f3xx_hal::gpio;
 use stm32f3xx_hal::gpio::{Edge, GpioExt, Input};
 use stm32f3xx_hal::interrupt;
 use stm32f3xx_hal::pac;
-use stm32f3xx_hal::prelude::_embedded_hal_digital_ToggleableOutputPin;
+use stm32f3xx_hal::pac::USART1;
+//use stm32f3xx_hal::prelude::_embedded_hal_digital_ToggleableOutputPin;
 use stm32f3xx_hal::prelude::_stm32f3xx_hal_rcc_RccExt;
 use stm32f3xx_hal::prelude::_stm32f3xx_hal_syscfg_SysCfgExt;
 
 static BUTTON: Mutex<RefCell<Option<gpio::PA0<Input>>>> = Mutex::new(RefCell::new(None));
-//static USART: Mutex<RefCell<Option<usart1::TDR>>> = Mutex::new(RefCell::new(None));
+static USART: Mutex<RefCell<Option<USART1>>> = Mutex::new(RefCell::new(None));
 
 #[entry]
 fn main() -> ! {
     let peripherals = pac::Peripherals::take().unwrap();
 
-    // enable PA10 and PA9 as alternate function 7, USART RX/TX respectively
-    peripherals.GPIOA.moder.modify(|_, w| w.moder9().bits(0b10).moder10().bits(0b10));
-
-    // set pa9 as an output
-    peripherals.GPIOA.otyper.modify(|_, w| w.ot9().bit(true));
-
-    // set pull downs for PA10
-    unsafe { peripherals.GPIOA.pupdr.modify(|_, w| w.pupdr10().bits(0b10).pupdr9().bits(0b00)) };
-
-    // set alternate functions for PA9/PA10 for USART TX/RX
-    peripherals.GPIOA.afrh.modify(|_, w| w.afrh10().bits(0b0111).afrh9().bits(0b0111));
+    // enable GPIOA/GPIOE peripheral clocks
+    peripherals.RCC.ahbenr.modify(|_, w| w.iopaen().bit(true).iopeen().bit(true));
 
     // enable USART1 peripheral clock
     peripherals.RCC.apb2enr.modify(|_, w| w.usart1en().bit(true));
 
-    // set baud rate for 8MHz default clock
+    // set PA9/10 to alternate function mode
+    peripherals.GPIOA.moder.modify(|_, w| w.moder10().bits(0b11).moder9().bits(0b11));
+
+    // set pa9 as an output push-pull
+    peripherals.GPIOA.otyper.modify(|_, w| w.ot9().bit(false));
+    // set pa9 as an output open-drain
+    //peripherals.GPIOA.otyper.modify(|_, w| w.ot9().bit(true));
+
+    // set pull downs for PA10
+    unsafe { peripherals.GPIOA.pupdr.modify(|_, w| w.pupdr10().bits(0b10).pupdr9().bits(0b00)) };
+
+    // set alternate functions for PA9/PA10 to USART TX/RX
+    peripherals.GPIOA.afrh.modify(|_, w| w.afrh10().bits(0b0111).afrh9().bits(0b0111));
+
+    // set USART1 baud rate for 8MHz default clock to 115200
     peripherals.USART1.brr.modify(|_, w| w.brr().bits((8_000_000 / 115_200) as u16));
 
-    // transmitter enable, receiver enable
-    peripherals.USART1.cr1.modify(|_, w| w.te().bit(true).re().bit(true));
+    // transmitter enable, receiver enable, usart enable
+    peripherals.USART1.cr1.modify(|_, w| w.te().bit(true).re().bit(true).ue().bit(true));
 
     // auto baud rate enable
     //peripherals.USART1.cr2.modify(|_, w| w.abren().bit(true));
@@ -55,11 +61,11 @@ fn main() -> ! {
     let mut exti = peripherals.EXTI;
     let mut syscfg = peripherals.SYSCFG.constrain(&mut rcc.apb2);
     let mut gpioa = peripherals.GPIOA.split(&mut rcc.ahb);
-    let mut gpioe = peripherals.GPIOE.split(&mut rcc.ahb);
+    //let mut gpioe = peripherals.GPIOE.split(&mut rcc.ahb);
 
-    let mut led = gpioe
-        .pe8
-        .into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
+    //let mut led = gpioe
+    //    .pe8
+    //    .into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
 
     let mut button = gpioa
         .pa0
@@ -71,14 +77,16 @@ fn main() -> ! {
 
     unsafe { NVIC::unmask(button.interrupt()) }
 
-    critical_section::with(|cs| *BUTTON.borrow(cs).borrow_mut() = Some(button));
-    //critical_section::with(|cs| *USART.borrow(cs).borrow_mut() = Some(usart1.tdr));
+    critical_section::with(|cs| {
+        *BUTTON.borrow(cs).borrow_mut() = Some(button);
+        *USART.borrow(cs).borrow_mut() = Some(peripherals.USART1)
+    });
 
     loop {
         asm::wfi();
 
-        peripherals.USART1.tdr.modify(|_, w| w.tdr().bits(0x24));
-        led.toggle().unwrap();
+        //peripherals.USART1.tdr.modify(|_, w| w.tdr().bits(0x24));
+        //led.toggle().unwrap();
 
         hprintln!("awoken");
     }
@@ -93,6 +101,13 @@ fn EXTI0() {
             .as_mut()
             .unwrap()
             .clear_interrupt();
+
+        USART
+            .borrow(cs)
+            .borrow_mut()
+            .as_mut()
+            .unwrap()
+            .tdr.modify(|_, w| w.tdr().bits(0x24));
     });
 }
 
