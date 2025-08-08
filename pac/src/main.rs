@@ -10,18 +10,13 @@ use panic_semihosting as _; // logs messages to the host stderr; requires a debu
 use core::cell::RefCell;
 use cortex_m::{asm, peripheral::NVIC};
 use cortex_m_rt::entry;
-//use cortex_m_semihosting::hprintln;
+use cortex_m_semihosting::hprintln;
 use critical_section::Mutex;
-use stm32f3xx_hal::gpio;
-use stm32f3xx_hal::gpio::{Edge, GpioExt, Input};
 use stm32f3xx_hal::interrupt;
 use stm32f3xx_hal::pac;
-use stm32f3xx_hal::pac::USART1;
-//use stm32f3xx_hal::prelude::_embedded_hal_digital_ToggleableOutputPin;
-use stm32f3xx_hal::prelude::_stm32f3xx_hal_rcc_RccExt;
-use stm32f3xx_hal::prelude::_stm32f3xx_hal_syscfg_SysCfgExt;
+use stm32f3xx_hal::pac::{EXTI, USART1};
 
-static BUTTON: Mutex<RefCell<Option<gpio::PA0<Input>>>> = Mutex::new(RefCell::new(None));
+static EXTI: Mutex<RefCell<Option<EXTI>>> = Mutex::new(RefCell::new(None));
 static USART: Mutex<RefCell<Option<USART1>>> = Mutex::new(RefCell::new(None));
 
 #[entry]
@@ -41,22 +36,29 @@ fn main() -> ! {
         .modify(|_, w| w.usart1en().bit(true));
 
     // set PA9/10 to alternate function mode
-    peripherals
-        .GPIOA
-        .moder
-        .modify(|_, w| w.moder10().bits(0b10).moder9().bits(0b10));
+    // set PA0 to input
+    peripherals.GPIOA.moder.modify(|_, w| {
+        w.moder10()
+            .bits(0b10)
+            .moder9()
+            .bits(0b10)
+            .moder0()
+            .bits(0b00)
+    });
 
-    // set pa9 as an output push-pull
+    // set pa9 as a push-pull output
     peripherals.GPIOA.otyper.modify(|_, w| w.ot9().bit(false));
-    // set pa9 as an output open-drain
-    //peripherals.GPIOA.otyper.modify(|_, w| w.ot9().bit(true));
 
-    // set pull downs for PA10
+    // set pull downs for PA10, disable for PA9, pull down PA0
     unsafe {
-        peripherals
-            .GPIOA
-            .pupdr
-            .modify(|_, w| w.pupdr10().bits(0b10).pupdr9().bits(0b00))
+        peripherals.GPIOA.pupdr.modify(|_, w| {
+            w.pupdr10()
+                .bits(0b10)
+                .pupdr9()
+                .bits(0b00)
+                .pupdr0()
+                .bits(0b10)
+        })
     };
 
     // set alternate functions for PA9/PA10 to USART TX/RX
@@ -64,6 +66,9 @@ fn main() -> ! {
         .GPIOA
         .afrh
         .modify(|_, w| w.afrh10().bits(0b0111).afrh9().bits(0b0111));
+
+    // set PA0 function to GPIO
+    peripherals.GPIOA.afrl.modify(|_, w| w.afrl0().bits(0b0000));
 
     // set USART1 baud rate for 8MHz default clock to 115200
     peripherals
@@ -77,51 +82,51 @@ fn main() -> ! {
         .cr1
         .modify(|_, w| w.te().bit(true).re().bit(true).ue().bit(true));
 
+    // set exti0 interrupt source to PA0
+    peripherals
+        .SYSCFG
+        .exticr1
+        .modify(unsafe { |_, w| w.exti0().bits(0b0000) });
+
+    // enable interrupts, events
+    peripherals.EXTI.imr1.modify(|_, w| w.mr0().bit(true));
+    peripherals.EXTI.emr1.modify(|_, w| w.mr0().bit(true));
+
+    // enable rising edge interrupt for exti0
+    peripherals.EXTI.rtsr1.modify(|_, w| w.tr0().bit(true));
+
     // auto baud rate enable
     //peripherals.USART1.cr2.modify(|_, w| w.abren().bit(true));
 
-    let mut rcc = peripherals.RCC.constrain();
-    let mut exti = peripherals.EXTI;
-    let mut syscfg = peripherals.SYSCFG.constrain(&mut rcc.apb2);
-    let mut gpioa = peripherals.GPIOA.split(&mut rcc.ahb);
     //let mut gpioe = peripherals.GPIOE.split(&mut rcc.ahb);
 
     //let mut led = gpioe
     //    .pe8
     //    .into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
 
-    let mut button = gpioa
-        .pa0
-        .into_pull_down_input(&mut gpioa.moder, &mut gpioa.pupdr);
-
-    syscfg.select_exti_interrupt_source(&button);
-    button.trigger_on_edge(&mut exti, Edge::Rising);
-    button.enable_interrupt(&mut exti);
-
-    unsafe { NVIC::unmask(button.interrupt()) }
+    unsafe { NVIC::unmask(interrupt::EXTI0) }
 
     critical_section::with(|cs| {
-        *BUTTON.borrow(cs).borrow_mut() = Some(button);
-
-        *USART.borrow(cs).borrow_mut() = Some(peripherals.USART1)
+        *USART.borrow(cs).borrow_mut() = Some(peripherals.USART1);
+        *EXTI.borrow(cs).borrow_mut() = Some(peripherals.EXTI);
     });
 
     loop {
         asm::wfi();
 
-        //hprintln!("awoken");
+        hprintln!("awoken");
     }
 }
 
 #[interrupt]
 fn EXTI0() {
     critical_section::with(|cs| {
-        BUTTON
-            .borrow(cs)
+        EXTI.borrow(cs)
             .borrow_mut()
             .as_mut()
             .unwrap()
-            .clear_interrupt();
+            .pr1
+            .modify(|_, w| w.pr0().bit(true));
 
         USART
             .borrow(cs)
