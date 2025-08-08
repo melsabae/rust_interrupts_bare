@@ -10,7 +10,7 @@ use panic_semihosting as _; // logs messages to the host stderr; requires a debu
 use core::cell::RefCell;
 use cortex_m::{asm, peripheral::NVIC};
 use cortex_m_rt::entry;
-use cortex_m_semihosting::hprintln;
+//use cortex_m_semihosting::hprintln;
 use critical_section::Mutex;
 use stm32f3xx_hal::gpio;
 use stm32f3xx_hal::gpio::{Edge, GpioExt, Input};
@@ -29,13 +29,22 @@ fn main() -> ! {
     let peripherals = pac::Peripherals::take().unwrap();
 
     // enable GPIOA/GPIOE peripheral clocks
-    peripherals.RCC.ahbenr.modify(|_, w| w.iopaen().bit(true).iopeen().bit(true));
+    peripherals
+        .RCC
+        .ahbenr
+        .modify(|_, w| w.iopaen().bit(true).iopeen().bit(true));
 
     // enable USART1 peripheral clock
-    peripherals.RCC.apb2enr.modify(|_, w| w.usart1en().bit(true));
+    peripherals
+        .RCC
+        .apb2enr
+        .modify(|_, w| w.usart1en().bit(true));
 
     // set PA9/10 to alternate function mode
-    peripherals.GPIOA.moder.modify(|_, w| w.moder10().bits(0b11).moder9().bits(0b11));
+    peripherals
+        .GPIOA
+        .moder
+        .modify(|_, w| w.moder10().bits(0b10).moder9().bits(0b10));
 
     // set pa9 as an output push-pull
     peripherals.GPIOA.otyper.modify(|_, w| w.ot9().bit(false));
@@ -43,16 +52,30 @@ fn main() -> ! {
     //peripherals.GPIOA.otyper.modify(|_, w| w.ot9().bit(true));
 
     // set pull downs for PA10
-    unsafe { peripherals.GPIOA.pupdr.modify(|_, w| w.pupdr10().bits(0b10).pupdr9().bits(0b00)) };
+    unsafe {
+        peripherals
+            .GPIOA
+            .pupdr
+            .modify(|_, w| w.pupdr10().bits(0b10).pupdr9().bits(0b00))
+    };
 
     // set alternate functions for PA9/PA10 to USART TX/RX
-    peripherals.GPIOA.afrh.modify(|_, w| w.afrh10().bits(0b0111).afrh9().bits(0b0111));
+    peripherals
+        .GPIOA
+        .afrh
+        .modify(|_, w| w.afrh10().bits(0b0111).afrh9().bits(0b0111));
 
     // set USART1 baud rate for 8MHz default clock to 115200
-    peripherals.USART1.brr.modify(|_, w| w.brr().bits((8_000_000 / 115_200) as u16));
+    peripherals
+        .USART1
+        .brr
+        .modify(|_, w| w.brr().bits((8_000_000 / 115_200) as u16));
 
     // transmitter enable, receiver enable, usart enable
-    peripherals.USART1.cr1.modify(|_, w| w.te().bit(true).re().bit(true).ue().bit(true));
+    peripherals
+        .USART1
+        .cr1
+        .modify(|_, w| w.te().bit(true).re().bit(true).ue().bit(true));
 
     // auto baud rate enable
     //peripherals.USART1.cr2.modify(|_, w| w.abren().bit(true));
@@ -79,16 +102,14 @@ fn main() -> ! {
 
     critical_section::with(|cs| {
         *BUTTON.borrow(cs).borrow_mut() = Some(button);
+
         *USART.borrow(cs).borrow_mut() = Some(peripherals.USART1)
     });
 
     loop {
         asm::wfi();
 
-        //peripherals.USART1.tdr.modify(|_, w| w.tdr().bits(0x24));
-        //led.toggle().unwrap();
-
-        hprintln!("awoken");
+        //hprintln!("awoken");
     }
 }
 
@@ -107,7 +128,9 @@ fn EXTI0() {
             .borrow_mut()
             .as_mut()
             .unwrap()
-            .tdr.modify(|_, w| w.tdr().bits(0x24));
+            .tdr
+            // '$' in ascii
+            .modify(|_, w| w.tdr().bits(0x24));
     });
 }
 
