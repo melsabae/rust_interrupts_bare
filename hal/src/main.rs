@@ -13,17 +13,19 @@ use cortex_m::peripheral::NVIC;
 use cortex_m_rt::entry;
 use cortex_m_semihosting::hprintln;
 use critical_section::Mutex;
+use stm32f3xx_hal::gpio::{AF7, Input, Output, PA0, PA9, PA10, PE8, PushPull};
 use stm32f3xx_hal::interrupt;
 use stm32f3xx_hal::pac;
 use stm32f3xx_hal::pac::{EXTI, USART1};
 use stm32f3xx_hal::prelude::*;
 use stm32f3xx_hal::serial::Serial;
-use stm32f3xx_hal::gpio::{PushPull, AF7, PA9, PA10};
 
 type SerialType = Serial<USART1, (PA9<AF7<PushPull>>, PA10<AF7<PushPull>>)>;
 
 static EXTI: Mutex<RefCell<Option<EXTI>>> = Mutex::new(RefCell::new(None));
 static USART: Mutex<RefCell<Option<SerialType>>> = Mutex::new(RefCell::new(None));
+static LED: Mutex<RefCell<Option<PE8<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
+static BUTTON: Mutex<RefCell<Option<PA0<Input>>>> = Mutex::new(RefCell::new(None));
 
 #[entry]
 fn main() -> ! {
@@ -35,11 +37,11 @@ fn main() -> ! {
     let mut gpioa = peripherals.GPIOA.split(&mut rcc.ahb);
     let mut gpioe = peripherals.GPIOE.split(&mut rcc.ahb);
 
-    let _button = gpioa
+    let button = gpioa
         .pa0
         .into_pull_down_input(&mut gpioa.moder, &mut gpioa.pupdr);
 
-    let _led = gpioe
+    let led = gpioe
         .pe8
         .into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
 
@@ -87,6 +89,8 @@ fn main() -> ! {
     unsafe { NVIC::unmask(interrupt::EXTI0) }
 
     critical_section::with(|cs| {
+        *BUTTON.borrow(cs).borrow_mut() = Some(button);
+        *LED.borrow(cs).borrow_mut() = Some(led);
         *USART.borrow(cs).borrow_mut() = Some(usart1);
         *EXTI.borrow(cs).borrow_mut() = Some(peripherals.EXTI);
     });
@@ -108,7 +112,12 @@ fn EXTI0() {
             .pr1
             .modify(|_, w| w.pr0().bit(true));
 
-        hprintln!("ahoy");
+        LED.borrow(cs)
+            .borrow_mut()
+            .as_mut()
+            .unwrap()
+            .toggle()
+            .unwrap();
 
         USART
             .borrow(cs)
