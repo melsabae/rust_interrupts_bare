@@ -13,16 +13,15 @@ use cortex_m::peripheral::NVIC;
 use cortex_m_rt::entry;
 use cortex_m_semihosting::hprintln;
 use critical_section::Mutex;
-use stm32f3xx_hal::gpio::{AF7, Input, Output, PA0, PA9, PA10, PE8, PushPull};
+use stm32f3xx_hal::gpio::{AF7, Edge::Rising, Input, Output, PA0, PA9, PA10, PE8, PushPull};
 use stm32f3xx_hal::interrupt;
 use stm32f3xx_hal::pac;
-use stm32f3xx_hal::pac::{EXTI, USART1};
+use stm32f3xx_hal::pac::USART1;
 use stm32f3xx_hal::prelude::*;
 use stm32f3xx_hal::serial::Serial;
 
 type SerialType = Serial<USART1, (PA9<AF7<PushPull>>, PA10<AF7<PushPull>>)>;
 
-static EXTI: Mutex<RefCell<Option<EXTI>>> = Mutex::new(RefCell::new(None));
 static USART: Mutex<RefCell<Option<SerialType>>> = Mutex::new(RefCell::new(None));
 static LED: Mutex<RefCell<Option<PE8<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
 static BUTTON: Mutex<RefCell<Option<PA0<Input>>>> = Mutex::new(RefCell::new(None));
@@ -32,14 +31,19 @@ fn main() -> ! {
     let peripherals = pac::Peripherals::take().unwrap();
     let mut rcc = peripherals.RCC.constrain();
     let mut flash = peripherals.FLASH.constrain();
+    let mut exti = peripherals.EXTI;
     let clocks = rcc.cfgr.sysclk(48.MHz()).freeze(&mut flash.acr);
-    let syscfg = peripherals.SYSCFG.constrain(&mut rcc.apb2);
+    let mut syscfg = peripherals.SYSCFG.constrain(&mut rcc.apb2);
     let mut gpioa = peripherals.GPIOA.split(&mut rcc.ahb);
     let mut gpioe = peripherals.GPIOE.split(&mut rcc.ahb);
 
-    let button = gpioa
+    let mut button = gpioa
         .pa0
         .into_pull_down_input(&mut gpioa.moder, &mut gpioa.pupdr);
+
+    syscfg.select_exti_interrupt_source(&button);
+    button.trigger_on_edge(&mut exti, Rising);
+    button.enable_interrupt(&mut exti);
 
     let led = gpioe
         .pe8
@@ -56,43 +60,20 @@ fn main() -> ! {
             .pa10
             .into_af_push_pull::<7>(&mut gpioa.moder, &mut gpioa.otyper, &mut gpioa.afrh);
 
-    let usart_pins = (pa9, pa10);
     let usart1 = Serial::new(
         peripherals.USART1,
-        usart_pins,
+        (pa9, pa10),
         115200.Bd(),
         clocks,
         &mut rcc.apb2,
     );
 
-    // set exti0 interrupt source to PA0
-    syscfg
-        .exticr1
-        .modify(unsafe { |_, w| w.exti0().bits(0b0000) });
-
-    // enable interrupts, events
-    peripherals.EXTI.imr1.modify(|_, w| w.mr0().bit(true));
-    peripherals.EXTI.emr1.modify(|_, w| w.mr0().bit(true));
-
-    // enable rising edge interrupt for exti0
-    peripherals.EXTI.rtsr1.modify(|_, w| w.tr0().bit(true));
-
-    //// auto baud rate enable
-    ////peripherals.USART1.cr2.modify(|_, w| w.abren().bit(true));
-
-    ////let mut gpioe = peripherals.GPIOE.split(&mut rcc.ahb);
-
-    ////let mut led = gpioe
-    ////    .pe8
-    ////    .into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
-
-    unsafe { NVIC::unmask(interrupt::EXTI0) }
+    unsafe { NVIC::unmask(button.interrupt()) }
 
     critical_section::with(|cs| {
         *BUTTON.borrow(cs).borrow_mut() = Some(button);
         *LED.borrow(cs).borrow_mut() = Some(led);
         *USART.borrow(cs).borrow_mut() = Some(usart1);
-        *EXTI.borrow(cs).borrow_mut() = Some(peripherals.EXTI);
     });
 
     loop {
@@ -105,12 +86,12 @@ fn main() -> ! {
 #[interrupt]
 fn EXTI0() {
     critical_section::with(|cs| {
-        EXTI.borrow(cs)
+        BUTTON
+            .borrow(cs)
             .borrow_mut()
             .as_mut()
             .unwrap()
-            .pr1
-            .modify(|_, w| w.pr0().bit(true));
+            .clear_interrupt();
 
         LED.borrow(cs)
             .borrow_mut()
