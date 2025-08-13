@@ -19,6 +19,7 @@ mod app {
 
     #[shared]
     struct Shared {
+        // these fields could be #[lock_free] because no other task uses them
         usart: SerialType,
         led: PE8<Output<PushPull>>,
         button: PA0<Input>,
@@ -103,3 +104,4 @@ mod app {
         });
     }
 }
+
