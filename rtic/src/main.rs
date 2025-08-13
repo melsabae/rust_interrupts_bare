@@ -18,14 +18,14 @@ mod app {
     type SerialType = Serial<USART1, (PA9<AF7<PushPull>>, PA10<AF7<PushPull>>)>;
 
     #[shared]
-    struct Shared {}
-
-    #[local]
-    struct Local {
+    struct Shared {
         usart: SerialType,
         led: PE8<Output<PushPull>>,
         button: PA0<Input>,
     }
+
+    #[local]
+    struct Local {}
 
     #[init]
     fn init(cx: init::Context) -> (Shared, Local) {
@@ -71,7 +71,7 @@ mod app {
             &mut rcc.apb2,
         );
 
-        (Shared {}, Local { usart, led, button })
+        (Shared { usart, led, button }, Local {})
     }
 
     #[idle]
@@ -81,11 +81,25 @@ mod app {
         }
     }
 
-    #[task(binds = EXTI0, local = [led, button, usart])]
-    fn button_handler(cx: button_handler::Context) {
-        cx.local.usart.write(b'$').unwrap();
-        cx.local.led.toggle().unwrap();
-        cx.local.button.clear_interrupt();
-        //hprintln!("tasking");
+    //// using locals instead of shared
+    //#[task(binds = EXTI0, local = [led, button, usart])]
+    //fn button_handler_local(cx: button_handler_local::Context) {
+    //    cx.local.button.clear_interrupt();
+    //    cx.local.led.toggle().unwrap();
+    //    cx.local.usart.write(b'$').unwrap();
+    //    //hprintln!("tasking");
+    //}
+
+    #[task(binds = EXTI0, shared = [led, button, usart])]
+    fn button_handler_shared(cx: button_handler_shared::Context) {
+        let button = cx.shared.button;
+        let led = cx.shared.led;
+        let usart = cx.shared.usart;
+
+        (button, led, usart).lock(|b, l, u| {
+            b.clear_interrupt();
+            l.toggle().unwrap();
+            u.write(b'$').unwrap();
+        });
     }
 }
