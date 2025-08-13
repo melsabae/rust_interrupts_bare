@@ -105,8 +105,7 @@ fn EXTI0() {
             .borrow_mut()
             .as_mut()
             .unwrap()
-            .write(0x24)
+            .write(b'$')
             .unwrap();
     });
 }
-

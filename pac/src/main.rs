@@ -12,9 +12,9 @@ use cortex_m::{asm, peripheral::NVIC};
 use cortex_m_rt::entry;
 use cortex_m_semihosting::hprintln;
 use critical_section::Mutex;
-use stm32f3::stm32f303::{Peripherals, interrupt};
-use stm32f3::stm32f303::USART1;
 use stm32f3::stm32f303::EXTI;
+use stm32f3::stm32f303::USART1;
+use stm32f3::stm32f303::{Peripherals, interrupt};
 
 static EXTI: Mutex<RefCell<Option<EXTI>>> = Mutex::new(RefCell::new(None));
 static USART: Mutex<RefCell<Option<USART1>>> = Mutex::new(RefCell::new(None));
@@ -37,14 +37,16 @@ fn main() -> ! {
 
     // set PA9/10 to alternate function mode
     // set PA0 to input
-    peripherals.GPIOA.moder().modify(unsafe { |_, w| {
-        w.moder10()
-            .bits(0b10)
-            .moder9()
-            .bits(0b10)
-            .moder0()
-            .bits(0b00)
-    }});
+    peripherals.GPIOA.moder().modify(unsafe {
+        |_, w| {
+            w.moder10()
+                .bits(0b10)
+                .moder9()
+                .bits(0b10)
+                .moder0()
+                .bits(0b00)
+        }
+    });
 
     // set pa9 as a push-pull output
     peripherals.GPIOA.otyper().modify(|_, w| w.ot9().bit(false));
@@ -68,13 +70,16 @@ fn main() -> ! {
         .modify(unsafe { |_, w| w.afrh10().bits(0b0111).afrh9().bits(0b0111) });
 
     // set PA0 function to GPIO
-    peripherals.GPIOA.afrl().modify(unsafe { |_, w| w.afrl0().bits(0b0000) });
+    peripherals
+        .GPIOA
+        .afrl()
+        .modify(unsafe { |_, w| w.afrl0().bits(0b0000) });
 
     // set USART1 baud rate for 8MHz default clock to 115200
     peripherals
         .USART1
         .brr()
-        .modify(unsafe { |_, w| w.brr().bits((8_000_000 / 115_200) as u16)});
+        .modify(unsafe { |_, w| w.brr().bits((8_000_000 / 115_200) as u16) });
 
     // transmitter enable, receiver enable, usart enable
     peripherals
@@ -135,7 +140,6 @@ fn EXTI0() {
             .unwrap()
             .tdr()
             // '$' in ascii
-            .modify(unsafe { |_, w| w.tdr().bits(0x24) });
+            .modify(unsafe { |_, w| w.tdr().bits(b'$' as u16) });
     });
 }
-

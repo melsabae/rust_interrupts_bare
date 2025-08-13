@@ -32,7 +32,7 @@ fn exti0_handler() {
         ptr::write_volatile(exti_pr1, exti0_pr1_clear);
 
         // send a byte over usart
-        ptr::write_volatile(usart1_tdr, 0x24_u8); // '$'
+        ptr::write_volatile(usart1_tdr, b'$'); // '$'
     }
 }
 
